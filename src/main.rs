@@ -45,8 +45,6 @@ fn main() {
     }
     else { false };
 
-    println!("File: {file}");
-
     let rss_file = PathBuf::from(file);
     if !rss_file.is_file() {
         println!("Not a file");
