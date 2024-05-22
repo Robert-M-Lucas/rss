@@ -1,125 +1,108 @@
 use std::{env, fs, process};
 use std::borrow::Borrow;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::process::Command;
+use std::vec::IntoIter;
+use config::Config;
+use crate::binary_utils::{delete_binary, execute_binary, write_binary};
+use crate::editor::start_editor_blocking;
+use crate::project_utils::{build_project, delete_project, generate_project, get_cargo_and_source_project};
+use crate::rss_utils::{build_rss, check_file, get_binary_rss, get_cargo_and_source_rss};
 
-trait Append<Segment : ?Sized> : Sized
-    where
-        Segment : ToOwned<Owned = Self>,
-        Self : Borrow<Segment>,
-{
-    fn append (self: Self, s: impl AsRef<Segment>)
-               -> Self
-    ;
+mod config;
+mod rss_utils;
+mod project_utils;
+mod editor;
+mod binary_utils;
+mod os_str_utils;
+
+const HELP_TEXT: &'static str = include_str!("help_text");
+
+fn print_err_exit(s: Option<&str>, help_text: bool) -> ! {
+    if let Some(s) = s {
+        println!("{s}");
+        if help_text { println!(); }
+    }
+    if help_text {
+        println!("{HELP_TEXT}");
+    }
+    process::exit(-1)
 }
 
-impl Append<OsStr> for OsString {
-    fn append (mut self: OsString, s: impl AsRef<OsStr>)
-               -> Self
-    {
-        self.push(s);
-        self
+fn get_file(args: &mut IntoIter<String>) -> Result<PathBuf, String> {
+    if let Some(file) = args.next() {
+        Ok(PathBuf::from(file))
+    } else {
+        Err("This command requires a file argument that has not been provided".to_string())
     }
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() <= 1 {
-        println!("Specify file");
-        process::exit(-1);
-    }
+    let mut args = env::args().collect::<Vec<_>>().into_iter();
 
-    let mut args = args.into_iter();
-    args.next();
-    let file = args.next().unwrap();
+    let self_location = PathBuf::from(args.next().unwrap()).parent().unwrap().to_owned();
 
-    let edit = if let Some(a) = args.next() {
-        if &a == "edit" {
-            true
+    let command = args.next().unwrap_or_else(|| print_err_exit(None, true));
+
+    let config = Config::read(&self_location).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+
+    match command.as_str() {
+        "help" | "h" => {
+            println!("{HELP_TEXT}");
         }
-        else {
-            println!("Unknown option: {a}");
-            process::exit(-1);
+        "edit" | "e" => {
+            let rss_file = get_file(&mut args).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            check_file(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+
+            let (cargo_content, rust_content) = get_cargo_and_source_rss(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+
+            generate_project(&rss_file, &cargo_content, &rust_content).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+
+            start_editor_blocking(&config, &rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+
+            let binary;
+            loop {
+                match build_project(&rss_file) {
+                    Ok(b) => {
+                        binary = b;
+                        break;
+                    },
+                    Err(Ok(_)) => {}
+                    Err(Err(e)) => print_err_exit(Some(&e), false)
+                };
+
+                println!("Failed Cargo build, reopening editor");
+                start_editor_blocking(&config, &rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            }
+
+
+            let (cargo_content, rust_content) = get_cargo_and_source_project(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+
+            build_rss(&config, &rss_file, &cargo_content, &rust_content, &binary).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+
+            println!("RSS file updated");
+
+            delete_project(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+
+            println!("Cleaned project files");
         }
-    }
-    else { false };
+        "run" | "r" => {
+            let rss_file = get_file(&mut args).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            check_file(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
-    let rss_file = PathBuf::from(file);
-    if !rss_file.is_file() {
-        println!("Not a file");
-        process::exit(-1);
-    }
+            let contents = get_binary_rss(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
-    let directory = rss_file.parent().unwrap();
-    let file_name = rss_file.file_stem().unwrap();
+            write_binary(&rss_file, &contents).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            drop(contents);
 
-    if edit {
-        let contents = fs::read(&rss_file).unwrap();
-
-        let (cargo_toml, rust_content) = if contents.len() == 0 {
-            (include_str!("default_cargo").replace("$$$$", file_name.to_str().unwrap()), include_str!("default_main").to_string())
-        } else {
-            let contents = &contents[..contents.len() - 2]; // Remove '*/'
-            let (contents, compiled_length) = (&contents[..contents.len() - 4], &contents[contents.len() - 4..]);
-            let compiled_length = u32::from_le_bytes(compiled_length.try_into().unwrap());
-            let contents = &contents[..contents.len() - compiled_length as usize - 3]; // Remove '\n/*'
-            let contents = String::from_utf8_lossy(contents);
-
-            let (cargo_toml, rust_contents) = contents.split_at(contents.find("*/").unwrap());
-            let (cargo_toml, rust_contents) = (&cargo_toml[2..], &rust_contents[3..]); // Remove '/*' and '*/\n'
-
-            (cargo_toml.to_string(), rust_contents.to_string())
-        };
-
-        fs::create_dir(directory.join("src")).unwrap();
-
-        let src = directory.join("src");
-        let main_file = src.join("main.rs");
-        fs::write(&main_file, rust_content.as_bytes()).unwrap();
-        let cargo_file = directory.join("Cargo.toml");
-        fs::write(&cargo_file, cargo_toml.as_bytes()).unwrap();
-
-        Command::new("code.cmd").args([OsStr::new("-w"), directory.as_os_str()]).status().ok();
-
-        Command::new("cargo").args([OsStr::new("build"), OsStr::new("-r")]).current_dir(directory).status().ok();
-
-        let mut output_data: Vec<u8> = Vec::new();
-
-        output_data.extend("/*".as_bytes());
-        output_data.extend(&fs::read(&cargo_file).unwrap());
-        output_data.extend("*/\n".as_bytes());
-        output_data.extend(&fs::read(&main_file).unwrap());
-        output_data.extend("\n/*".as_bytes());
-
-        let target = directory.join("target");
-        let compiled = fs::read(target.join("release")
-            .join(file_name.to_os_string().append(OsStr::new(".exe")))
-        ).unwrap();
-        output_data.extend(&compiled);
-        output_data.extend(&(compiled.len() as u32).to_le_bytes());
-        output_data.extend("*/".to_string().as_bytes());
-
-        fs::write(&rss_file, &output_data).unwrap();
-
-        fs::remove_dir_all(&target).unwrap();
-        fs::remove_dir_all(&src).unwrap();
-        fs::remove_file(&cargo_file).unwrap();
-        fs::remove_file(directory.join("Cargo.lock")).unwrap();
-    }
-    else {
-        let compiled = fs::read(&rss_file).unwrap();
-        if compiled.is_empty() {
-            println!("Empty file");
-            process::exit(-1);
+            execute_binary(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            delete_binary(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
         }
-        let compiled = &compiled[..compiled.len() - 2]; // Remove '*/'
-        let (compiled, compiled_length) = (&compiled[..compiled.len() - 4], &compiled[compiled.len() - 4..]);
-        let compiled_length = u32::from_le_bytes(compiled_length.try_into().unwrap());
-        let compiled = &compiled[compiled.len() - compiled_length as usize..]; // Remove '\n/*'
-        let exe_file = directory.join(file_name.to_os_string().append(OsStr::new(".exe")));
-        fs::write(&exe_file, compiled).unwrap();
-        Command::new(&exe_file).status().ok();
-        fs::remove_file(&exe_file).unwrap();
+        "config" | "c" => {
+            println!("Config file location: {}", Config::location(&self_location).display());
+        }
+        c => {
+            print_err_exit(Some(&format!("Unrecognised command: {c}")), true);
+        }
     }
 }

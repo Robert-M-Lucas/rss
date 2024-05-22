@@ -1,0 +1,11 @@
+Usage: rss [command]
+
+Commands:
+    help|h
+        Show help
+    run|r [file]
+        Run a file
+    edit|e [file]
+        Edit a file
+    config|c
+        Output the path to the config file

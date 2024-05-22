@@ -1,0 +1,8 @@
+Check hash of code against hash of compiled code (and rebuild if necessary) every run
+$0=true
+
+Store compiled code as a base64 string (plays nicer with editors, takes longer to decode into executable when running)
+$1=true
+
+Code editor (code/<nothing else supported yet>)
+$2=code
