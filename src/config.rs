@@ -3,13 +3,17 @@ use std::fs;
 use derive_getters::Getters;
 
 pub enum Editor {
-    Code
+    Code,
+    Nvim,
+    Nano
 }
 
 impl Editor {
     fn from_str(s: &str) -> Result<Editor, String> {
         Ok(match s {
             "code" => Editor::Code,
+            "nvim" => Editor::Nvim,
+            "nano" => Editor::Nano,
             e => return Err(format!("Code editor [{e}] in config file not supported"))
         })
     }

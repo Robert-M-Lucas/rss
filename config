@@ -10,5 +10,5 @@ Create a new directory when editing a script.
 Can help reduce clutter and conflicts however it may make testing the script on real files harder.
 $2=true
 
-Code editor (code/<nothing else supported yet>)
+Code editor (code/nano/nvim)
 $3=code
