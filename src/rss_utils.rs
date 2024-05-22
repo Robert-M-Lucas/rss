@@ -25,9 +25,19 @@ pub fn get_cargo_and_source_rss(rss_file: &Path) -> Result<((String, String)), S
         ));
     } else {
         'err_loop: loop {
+            let mut contents: &[u8] = &contents;
+            while contents[contents.len() - 1] == 10 || contents[contents.len() - 1] == 10 {
+                contents = &contents[..contents.len() - 1];
+                if contents.len() == 0 {
+                    break;
+                }
+            }
+
             if contents.len() < 2 {
                 break;
             }
+            let mut contents = contents;
+
             let contents = &contents[..contents.len() - 2]; // Remove raw / base64) and '*/'
 
             let mut i = contents.len() - 1;
@@ -96,6 +106,14 @@ pub fn get_binary_rss(rss_file: &Path) -> Result<(Vec<u8>, u64), String> {
     }
 
     'err_loop: loop {
+        let mut compiled: &[u8] = &compiled;
+        while compiled[compiled.len() - 1] == 10 || compiled[compiled.len() - 1] == 10 {
+            compiled = &compiled[..compiled.len() - 1];
+            if compiled.len() == 0 {
+                break;
+            }
+        }
+
         if compiled.len() < 2 {
             break;
         }
