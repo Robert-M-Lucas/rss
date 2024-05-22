@@ -36,7 +36,6 @@ pub fn get_cargo_and_source_rss(rss_file: &Path) -> Result<(String, String), Str
             if contents.len() < 2 {
                 break;
             }
-            let mut contents = contents;
 
             let contents = &contents[..contents.len() - 2]; // Remove raw / base64) and '*/'
 

@@ -43,7 +43,7 @@ fn get_file(args: &mut IntoIter<String>, generate: bool) -> Result<PathBuf, Stri
 fn main() {
     let mut args = env::args().collect::<Vec<_>>().into_iter();
 
-    let self_location = PathBuf::from(args.next().unwrap()).parent().unwrap().to_owned();
+    // let self_location = PathBuf::from(args.next().unwrap()).parent().unwrap().to_owned();
 
     let command = args.next().unwrap_or_else(|| print_err_exit(None, true));
 
