@@ -13,7 +13,7 @@ pub fn check_file(rss_file: &Path) -> Result<(), String> {
     }
 }
 
-pub fn get_cargo_and_source_rss(rss_file: &Path) -> Result<((String, String)), String> {
+pub fn get_cargo_and_source_rss(rss_file: &Path) -> Result<(String, String), String> {
     let file_name = rss_file.file_stem().unwrap();
 
     let contents = fs::read(&rss_file).map_err(|_| format!("Failed read [{}]", rss_file.display()))?;

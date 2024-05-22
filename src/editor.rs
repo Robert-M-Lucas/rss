@@ -5,8 +5,11 @@ use std::process::Command;
 use crate::config::{Config, Editor};
 
 pub fn start_editor_blocking(config: &Config, rss_file: &Path) -> Result<(), String> {
-    let directory = rss_file.parent().unwrap();
-
+    let mut directory = rss_file.parent().unwrap().to_path_buf();
+    let file_name = rss_file.file_stem().unwrap();
+    if *config.new_dir() {
+        directory = directory.join(file_name);
+    }
 
     match config.editor() {
         Editor::Code => {

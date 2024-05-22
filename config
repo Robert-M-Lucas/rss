@@ -6,5 +6,9 @@ Store compiled code as a base64 string (plays nicer with editors).
 Will take longer to start a script.
 $1=true
 
+Create a new directory when editing a script.
+Can help reduce clutter and conflicts however it may make testing the script on real files harder.
+$2=true
+
 Code editor (code/<nothing else supported yet>)
-$2=code
+$3=code

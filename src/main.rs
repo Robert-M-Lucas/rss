@@ -60,7 +60,7 @@ fn main() {
             let (cargo_content, rust_content) = get_cargo_and_source_rss(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
             println!("Generating project files");
-            generate_project(&rss_file, &cargo_content, &rust_content).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            generate_project(&config, &rss_file, &cargo_content, &rust_content).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
             println!("Starting editor");
             start_editor_blocking(&config, &rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
@@ -68,7 +68,7 @@ fn main() {
             let binary;
             loop {
                 println!("Building project");
-                match build_project(&rss_file) {
+                match build_project(&config, &rss_file) {
                     Ok(b) => {
                         binary = b;
                         break;
@@ -82,13 +82,13 @@ fn main() {
             }
 
 
-            let (cargo_content, rust_content) = get_cargo_and_source_project(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            let (cargo_content, rust_content) = get_cargo_and_source_project(&config, &rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
             println!("Building RSS file");
             build_rss(&config, &rss_file, &cargo_content, &rust_content, &binary).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
             println!("Cleaning project files");
-            delete_project(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            delete_project(&config, &rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
         }
         "run" | "r" => {
             let rss_file = get_file(&mut args, false).unwrap_or_else(|e| print_err_exit(Some(&e), false));
@@ -109,21 +109,21 @@ fn main() {
                 if hash != h.finish() {
                     println!("Hash changed, rebuilding project");
                     println!("Generating project files");
-                    generate_project(&rss_file, &cargo_content, &rust_content).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+                    generate_project(&config, &rss_file, &cargo_content, &rust_content).unwrap_or_else(|e| print_err_exit(Some(&e), false));
                     println!("Building project");
-                    binary = match build_project(&rss_file) {
+                    binary = match build_project(&config, &rss_file) {
                         Ok(b) => b,
                         Err(Ok(_)) => print_err_exit(Some("Cargo build failed"), false),
                         Err(Err(e)) => print_err_exit(Some(&e), false)
                     };
 
-                    let (cargo_content, rust_content) = get_cargo_and_source_project(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+                    let (cargo_content, rust_content) = get_cargo_and_source_project(&config, &rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
                     println!("Building RSS file");
                     build_rss(&config, &rss_file, &cargo_content, &rust_content, &binary).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
                     println!("Cleaning project files");
-                    delete_project(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+                    delete_project(&config, &rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
                     println!("Proceeding with running");
                 }
