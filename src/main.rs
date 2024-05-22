@@ -90,8 +90,15 @@ fn main() {
             println!("Cleaning project files");
             delete_project(&config, &rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
         }
-        "run" | "r" => {
-            let rss_file = get_file(&mut args, false).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+        "config" | "c" => {
+            println!("Config file location: {}", Config::location(&env::current_exe().unwrap().parent().unwrap()).display());
+        }
+        path => {
+            let rss_file = if path == "r" || path == "run" {
+                get_file(&mut args, false).unwrap_or_else(|e| print_err_exit(Some(&e), false))
+            } else {
+                path::absolute(PathBuf::from(path)).unwrap()
+            };
             check_file(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
             let (mut binary, hash) = get_binary_rss(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
@@ -135,11 +142,6 @@ fn main() {
             execute_binary(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
             delete_binary(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
         }
-        "config" | "c" => {
-            println!("Config file location: {}", Config::location(&env::current_exe().unwrap().parent().unwrap()).display());
-        }
-        c => {
-            print_err_exit(Some(&format!("Unrecognised command: {c}")), true);
-        }
+
     }
 }
