@@ -136,7 +136,7 @@ fn main() {
             delete_binary(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
         }
         "config" | "c" => {
-            println!("Config file location: {}", Config::location(&self_location).display());
+            println!("Config file location: {}", Config::location(&env::current_exe().unwrap().parent().unwrap()).display());
         }
         c => {
             print_err_exit(Some(&format!("Unrecognised command: {c}")), true);
