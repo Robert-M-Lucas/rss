@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+#[cfg(target_os = "windows")]
 use crate::os_str_utils::Append;
 
 pub fn write_binary(rss_file: &Path, binary: &[u8]) -> Result<(), String> {
@@ -15,6 +16,10 @@ pub fn write_binary(rss_file: &Path, binary: &[u8]) -> Result<(), String> {
     let exe_file = directory.join(file_name);
 
     fs::write(&exe_file, binary).map_err(|_| format!("Failed to write binary to {}", exe_file.display()))?;
+
+    #[cfg(target_os = "linux")]
+    Command::new("chmod").args([OsStr::new("+x"), exe_file.as_os_str()]).status().map_err(|_| format!("Failed to mark binary as executable {}", exe_file.display()))?;
+
     Ok(())
 }
 

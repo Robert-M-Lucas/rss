@@ -1,7 +1,6 @@
-use std::{fs, process};
-use std::ffi::OsStr;
+use std::fs;
 use std::path::Path;
-use std::process::Command;
+
 use crate::config::Config;
 
 pub fn check_file(rss_file: &Path) -> Result<(), String> {
@@ -51,8 +50,6 @@ pub fn get_cargo_and_source_rss(rss_file: &Path) -> Result<(String, String), Str
 }
 
 pub fn get_binary_rss(rss_file: &Path) -> Result<Vec<u8>, String> {
-    let file_name = rss_file.file_stem().unwrap();
-
     let compiled = fs::read(&rss_file).map_err(|_| format!("Failed read [{}]", rss_file.display()))?;
 
     if compiled.is_empty() {
@@ -74,7 +71,7 @@ pub fn get_binary_rss(rss_file: &Path) -> Result<Vec<u8>, String> {
         }
         let compiled = &compiled[compiled.len() - compiled_length..];
 
-        return if is_b64 == 1 {
+        return if is_b64 == 98 {
             let Ok(decoded) = base64::decode(compiled) else {
                 break;
             };
@@ -96,19 +93,20 @@ pub fn build_rss(config: &Config, rss_file: &Path, cargo_content: &str, rust_con
     output_data.extend("\n/*".as_bytes());
 
     if *config.base64() {
-        output_data.extend(base64::encode(binary).as_bytes());
+        let b64 = base64::encode(binary);
+        output_data.extend(b64.as_bytes());
+        output_data.extend(&(b64.as_bytes().len() as u32).to_le_bytes());
     }
     else {
         output_data.extend(binary);
+        output_data.extend(&(binary.len() as u32).to_le_bytes());
     }
-
-    output_data.extend(&(binary.len() as u32).to_le_bytes());
 
     if *config.base64() {
-        output_data.push(1);
+        output_data.push(98);
     }
     else {
-        output_data.push(0);
+        output_data.push(114);
     }
 
     output_data.extend("*/".to_string().as_bytes());

@@ -1,6 +1,4 @@
-use std::{env, fs, process};
-use std::borrow::Borrow;
-use std::ffi::OsStr;
+use std::{env, fs, path, process};
 use std::path::PathBuf;
 use std::vec::IntoIter;
 use config::Config;
@@ -29,9 +27,13 @@ fn print_err_exit(s: Option<&str>, help_text: bool) -> ! {
     process::exit(-1)
 }
 
-fn get_file(args: &mut IntoIter<String>) -> Result<PathBuf, String> {
+fn get_file(args: &mut IntoIter<String>, generate: bool) -> Result<PathBuf, String> {
     if let Some(file) = args.next() {
-        Ok(PathBuf::from(file))
+        let f = path::absolute(PathBuf::from(file)).unwrap();
+        if generate && !f.is_file() {
+            fs::write(&f, &[]).map_err(|_| format!("Failed to create file [{}]", f.display()))?;
+        }
+        Ok(f)
     } else {
         Err("This command requires a file argument that has not been provided".to_string())
     }
@@ -44,14 +46,14 @@ fn main() {
 
     let command = args.next().unwrap_or_else(|| print_err_exit(None, true));
 
-    let config = Config::read(&self_location).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+    let config = Config::read(&env::current_exe().unwrap().parent().unwrap()).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
     match command.as_str() {
         "help" | "h" => {
             println!("{HELP_TEXT}");
         }
         "edit" | "e" => {
-            let rss_file = get_file(&mut args).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            let rss_file = get_file(&mut args, true).unwrap_or_else(|e| print_err_exit(Some(&e), false));
             check_file(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
             let (cargo_content, rust_content) = get_cargo_and_source_rss(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
@@ -87,7 +89,7 @@ fn main() {
             println!("Cleaned project files");
         }
         "run" | "r" => {
-            let rss_file = get_file(&mut args).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            let rss_file = get_file(&mut args, false).unwrap_or_else(|e| print_err_exit(Some(&e), false));
             check_file(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
             let contents = get_binary_rss(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));

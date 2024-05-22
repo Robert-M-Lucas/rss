@@ -1,8 +1,8 @@
-use std::borrow::Borrow;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+#[cfg(target_os = "windows")]
 use crate::os_str_utils::Append;
 
 pub fn generate_project(rss_file: &Path, cargo_content: &str, rust_content: &str) -> Result<(), String> {
@@ -22,8 +22,9 @@ pub fn generate_project(rss_file: &Path, cargo_content: &str, rust_content: &str
 pub fn build_project(rss_file: &Path) -> Result<Vec<u8>, Result<(), String>> {
     let file_name = rss_file.file_stem().unwrap();
     let directory = rss_file.parent().unwrap();
+
     if !Command::new("cargo").args([OsStr::new("build"), OsStr::new("-r")]).current_dir(directory).status()
-        .map_err(|_| Err("Failed to run Cargo".to_string()))?.success() {
+        .map_err(|e| {println!("{:?}", e); Err("Failed to run Cargo".to_string())})?.success() {
         return Err(Ok(()))
     }
 
