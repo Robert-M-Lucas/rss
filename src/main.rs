@@ -1,4 +1,5 @@
 use std::{env, fs, path, process};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 use std::vec::IntoIter;
 use config::Config;
@@ -58,12 +59,15 @@ fn main() {
 
             let (cargo_content, rust_content) = get_cargo_and_source_rss(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
+            println!("Generating project files");
             generate_project(&rss_file, &cargo_content, &rust_content).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
+            println!("Starting editor");
             start_editor_blocking(&config, &rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
             let binary;
             loop {
+                println!("Building project");
                 match build_project(&rss_file) {
                     Ok(b) => {
                         binary = b;
@@ -80,22 +84,53 @@ fn main() {
 
             let (cargo_content, rust_content) = get_cargo_and_source_project(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
+            println!("Building RSS file");
             build_rss(&config, &rss_file, &cargo_content, &rust_content, &binary).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
-            println!("RSS file updated");
-
+            println!("Cleaning project files");
             delete_project(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
-
-            println!("Cleaned project files");
         }
         "run" | "r" => {
             let rss_file = get_file(&mut args, false).unwrap_or_else(|e| print_err_exit(Some(&e), false));
             check_file(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
-            let contents = get_binary_rss(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            let (mut binary, hash) = get_binary_rss(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
 
-            write_binary(&rss_file, &contents).unwrap_or_else(|e| print_err_exit(Some(&e), false));
-            drop(contents);
+            if *config.check_hash() {
+                let (cargo_content, rust_content) = get_cargo_and_source_rss(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+                let mut h = DefaultHasher::new();
+                cargo_content.hash(&mut h);
+                rust_content.hash(&mut h);
+                #[cfg(target_os = "windows")]
+                "windows".hash(&mut h);
+                #[cfg(target_os = "linux")]
+                "linux".hash(&mut h);
+
+                if hash != h.finish() {
+                    println!("Hash changed, rebuilding project");
+                    println!("Generating project files");
+                    generate_project(&rss_file, &cargo_content, &rust_content).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+                    println!("Building project");
+                    binary = match build_project(&rss_file) {
+                        Ok(b) => b,
+                        Err(Ok(_)) => print_err_exit(Some("Cargo build failed"), false),
+                        Err(Err(e)) => print_err_exit(Some(&e), false)
+                    };
+
+                    let (cargo_content, rust_content) = get_cargo_and_source_project(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+
+                    println!("Building RSS file");
+                    build_rss(&config, &rss_file, &cargo_content, &rust_content, &binary).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+
+                    println!("Cleaning project files");
+                    delete_project(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+
+                    println!("Proceeding with running");
+                }
+            }
+
+            write_binary(&rss_file, &binary).unwrap_or_else(|e| print_err_exit(Some(&e), false));
+            drop(binary);
 
             execute_binary(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));
             delete_binary(&rss_file).unwrap_or_else(|e| print_err_exit(Some(&e), false));

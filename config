@@ -1,7 +1,9 @@
-Check hash of code against hash of compiled code (and rebuild if necessary) every run
+Check hash of code against hash of compiled code (and rebuild if necessary) every run.
+Will take longer to start a script.
 $0=true
 
-Store compiled code as a base64 string (plays nicer with editors, takes longer to decode into executable when running)
+Store compiled code as a base64 string (plays nicer with editors).
+Will take longer to start a script.
 $1=true
 
 Code editor (code/<nothing else supported yet>)

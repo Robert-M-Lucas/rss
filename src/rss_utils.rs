@@ -1,4 +1,5 @@
 use std::fs;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::Path;
 
 use crate::config::Config;
@@ -12,7 +13,7 @@ pub fn check_file(rss_file: &Path) -> Result<(), String> {
     }
 }
 
-pub fn get_cargo_and_source_rss(rss_file: &Path) -> Result<(String, String), String> {
+pub fn get_cargo_and_source_rss(rss_file: &Path) -> Result<((String, String)), String> {
     let file_name = rss_file.file_stem().unwrap();
 
     let contents = fs::read(&rss_file).map_err(|_| format!("Failed read [{}]", rss_file.display()))?;
@@ -24,10 +25,28 @@ pub fn get_cargo_and_source_rss(rss_file: &Path) -> Result<(String, String), Str
         ));
     } else {
         'err_loop: loop {
-            if contents.len() < 7 {
+            if contents.len() < 2 {
                 break;
             }
             let contents = &contents[..contents.len() - 2]; // Remove raw / base64) and '*/'
+
+            let mut i = contents.len() - 1;
+            loop {
+                if contents[i] == 58 {
+                    break;
+                }
+                if i == 0 {
+                    break 'err_loop;
+                }
+                i -= 1;
+            }
+            let (contents, hash) = (&contents[..i], &contents[i+1..]);
+            let Ok(_hash): Result<u64, _> = String::from_utf8_lossy(hash).parse() else { break; };
+
+            if contents.len() < 1 {
+                break;
+            }
+
             let is_b64 = contents[contents.len() - 1];
             let contents = &contents[..contents.len() - 1];
 
@@ -69,7 +88,7 @@ pub fn get_cargo_and_source_rss(rss_file: &Path) -> Result<(String, String), Str
     }
 }
 
-pub fn get_binary_rss(rss_file: &Path) -> Result<Vec<u8>, String> {
+pub fn get_binary_rss(rss_file: &Path) -> Result<(Vec<u8>, u64), String> {
     let compiled = fs::read(&rss_file).map_err(|_| format!("Failed read [{}]", rss_file.display()))?;
 
     if compiled.is_empty() {
@@ -77,10 +96,28 @@ pub fn get_binary_rss(rss_file: &Path) -> Result<Vec<u8>, String> {
     }
 
     'err_loop: loop {
-        if compiled.len() < 7 {
+        if compiled.len() < 2 {
             break;
         }
         let compiled = &compiled[..compiled.len() - 2]; // Remove '*/'
+
+        let mut i = compiled.len() - 1;
+        loop {
+            if compiled[i] == 58 {
+                break;
+            }
+            if i == 0 {
+                break 'err_loop;
+            }
+            i -= 1;
+        }
+        let (compiled, hash) = (&compiled[..i], &compiled[i+1..]);
+        let Ok(hash) = String::from_utf8_lossy(hash).parse() else { break; };
+
+        if compiled.len() < 1 {
+            break;
+        }
+
         let is_b64 = compiled[compiled.len() - 1];
         let compiled = &compiled[..compiled.len() - 1];
 
@@ -114,9 +151,9 @@ pub fn get_binary_rss(rss_file: &Path) -> Result<Vec<u8>, String> {
             let Ok(decoded) = base64::decode(compiled) else {
                 break;
             };
-            Ok(Vec::from(decoded))
+            Ok((Vec::from(decoded), hash))
         } else {
-            Ok(Vec::from(compiled))
+            Ok((Vec::from(compiled), hash))
         }
     }
     return Err("Improperly formatted rss file".to_string());
@@ -148,6 +185,17 @@ pub fn build_rss(config: &Config, rss_file: &Path, cargo_content: &str, rust_con
     else {
         output_data.push(114);
     }
+
+    output_data.push(58);
+    let mut h = DefaultHasher::new();
+    cargo_content.hash(&mut h);
+    rust_content.hash(&mut h);
+    #[cfg(target_os = "windows")]
+    "windows".hash(&mut h);
+    #[cfg(target_os = "linux")]
+    "linux".hash(&mut h);
+
+    output_data.extend(format!("{}", h.finish()).as_bytes());
 
     output_data.extend("*/".to_string().as_bytes());
 
