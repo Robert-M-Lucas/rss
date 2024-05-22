@@ -23,13 +23,33 @@ pub fn get_cargo_and_source_rss(rss_file: &Path) -> Result<(String, String), Str
             include_str!("default_main").to_string()
         ));
     } else {
-        loop {
+        'err_loop: loop {
             if contents.len() < 7 {
                 break;
             }
-            let contents = &contents[..contents.len() - 3]; // Remove 0/1 (raw / base64) and '*/'
-            let (contents, compiled_length) = (&contents[..contents.len() - 4], &contents[contents.len() - 4..]);
-            let compiled_length = u32::from_le_bytes(compiled_length.try_into().unwrap());
+            let contents = &contents[..contents.len() - 2]; // Remove raw / base64) and '*/'
+            let is_b64 = contents[contents.len() - 1];
+            let contents = &contents[..contents.len() - 1];
+
+            let (contents, compiled_length) = if is_b64 == 98 {
+                let mut i = contents.len() - 1;
+                loop {
+                    if contents[i] == 58 {
+                        break;
+                    }
+                    if i == 0 {
+                        break 'err_loop;
+                    }
+                    i -= 1;
+                }
+                let (contents, compiled_length) = (&contents[..i], &contents[i+1..]);
+                let Ok(compiled_length) = String::from_utf8_lossy(compiled_length).parse() else { break; };
+                (contents, compiled_length)
+            } else {
+                let (contents, compiled_length) = (&contents[..contents.len() - 4], &contents[contents.len() - 4..]);
+                let compiled_length = u32::from_le_bytes(compiled_length.try_into().unwrap()) as usize;
+                (contents, compiled_length)
+            };
 
             if contents.len() < compiled_length as usize + 3 {
                 break;
@@ -56,16 +76,35 @@ pub fn get_binary_rss(rss_file: &Path) -> Result<Vec<u8>, String> {
         return Err("RSS file is empty - cannot run".to_string());
     }
 
-    loop {
+    'err_loop: loop {
         if compiled.len() < 7 {
             break;
         }
         let compiled = &compiled[..compiled.len() - 2]; // Remove '*/'
         let is_b64 = compiled[compiled.len() - 1];
         let compiled = &compiled[..compiled.len() - 1];
-        let (compiled, compiled_length) = (&compiled[..compiled.len() - 4], &compiled[compiled.len() - 4..]);
 
-        let compiled_length = u32::from_le_bytes(compiled_length.try_into().unwrap()) as usize;
+        let (compiled, compiled_length) = if is_b64 == 98 {
+            let mut i = compiled.len() - 1;
+            loop {
+                if compiled[i] == 58 {
+                    break;
+                }
+                if i == 0 {
+                    break 'err_loop;
+                }
+                i -= 1;
+            }
+            let (compiled, compiled_length) = (&compiled[..i], &compiled[i+1..]);
+            let Ok(compiled_length) = String::from_utf8_lossy(compiled_length).parse() else { break; };
+            (compiled, compiled_length)
+        } else {
+            let (compiled, compiled_length) = (&compiled[..compiled.len() - 4], &compiled[compiled.len() - 4..]);
+            let compiled_length = u32::from_le_bytes(compiled_length.try_into().unwrap()) as usize;
+            (compiled, compiled_length)
+        };
+
+
         if compiled_length > compiled.len() {
             break;
         }
@@ -95,7 +134,8 @@ pub fn build_rss(config: &Config, rss_file: &Path, cargo_content: &str, rust_con
     if *config.base64() {
         let b64 = base64::encode(binary);
         output_data.extend(b64.as_bytes());
-        output_data.extend(&(b64.as_bytes().len() as u32).to_le_bytes());
+        output_data.push(58);
+        output_data.extend(format!("{}", b64.as_bytes().len()).as_bytes());
     }
     else {
         output_data.extend(binary);
